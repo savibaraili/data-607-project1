@@ -1,0 +1,122 @@
+---
+title: "Chess Tournament Project 1"
+author: "Sabina Baraili"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(stringr)
+library(dplyr)
+```
+
+# Project 1: Chess Tournament Cross Table
+
+In this project, we parse the chess tournament cross table and generate a dataset with the following fields:
+
+- **Name**
+- **State**
+- **Total Points (Score)**
+- **Pre-Rating**
+- **Average Pre-Rating of Opponents**
+
+We use the raw text file provided and process it step by step.
+
+---
+
+## Step 1: Read Data
+```{r}
+# Read directly from GitHub raw file (or replace with local path if needed)
+url <- "https://raw.githubusercontent.com/savibaraili/data-607-project1/refs/heads/main/tournamentinfo.txt"
+lines <- suppressWarnings(readLines(url))
+
+# Separate player rows (names + scores) and state/rating rows
+player_rows <- lines[str_detect(lines, "^[[:space:]]*[0-9]+[[:space:]]*\\\\|")]
+state_rows  <- lines[str_detect(lines, "^[[:space:]]*[A-Z]{2}[[:space:]]*\\\\|")]
+
+```
+
+---
+
+## Step 2: Extract Player Info
+Each player has two rows in the text file:
+1. Player row: contains name, total points, and opponents.
+2. State row: contains state and pre/post rating.
+
+We extract these pieces into a structured table.
+```{r}
+players <- tibble(
+  Name = str_trim(str_sub(player_rows, 5, 36)),
+  Score = as.numeric(str_extract(player_rows, "\\d\\.\\d")),
+  State = str_extract(state_rows, "^[A-Z]{2}"),
+  PreRating = as.numeric(str_extract(state_rows, "(?<=R: )\\d+")),
+  Opponents = str_extract_all(player_rows, "(?<=W |L |D )\\d+")
+)
+```
+
+---
+
+## Step 3: Calculate Average Opponent Rating
+We map each opponent number to its pre-rating, then take the average.
+```{r}
+get_avg_opp_rating <- function(opps, ratings) {
+  opp_ids <- as.numeric(opps)
+  mean(ratings[opp_ids], na.rm = TRUE)
+}
+
+players <- players %>%
+  rowwise() %>%
+  mutate(AvgOppRating = round(get_avg_opp_rating(Opponents, PreRating), 0)) %>%
+  ungroup()
+```
+
+---
+
+## Step 4: Worked Example (Gary Hua)
+Let’s confirm the calculation for **Gary Hua** (first player).
+
+```{r}
+example <- players[1, ]
+
+example_name <- example$Name
+example_state <- example$State
+example_score <- example$Score
+example_prerating <- example$PreRating
+example_opps <- unlist(example$Opponents)
+example_opp_ratings <- players$PreRating[as.numeric(example_opps)]
+example_avg <- mean(example_opp_ratings)
+
+list(
+  Name = example_name,
+  State = example_state,
+  Score = example_score,
+  PreRating = example_prerating,
+  Opponents = example_opps,
+  OpponentRatings = example_opp_ratings,
+  AverageOpponentRating = example_avg
+)
+```
+
+---
+
+## Step 5: Final Output
+We now produce the final dataset.
+```{r}
+final_df <- players %>%
+  select(Name, State, Score, PreRating, AvgOppRating)
+
+# Show only the first 10 rows in the knitted report
+head(final_df, 10)
+```
+
+---
+
+## Step 6: Save as CSV
+All 64 players are saved into a CSV file.
+```{r}
+write.csv(final_df, "chess_players.csv", row.names = FALSE)
+```
+
+**Note:** The CSV contains all rows; this PDF shows only the first 10 for readability.
